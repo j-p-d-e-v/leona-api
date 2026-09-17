@@ -1,0 +1,17 @@
+[workspace]
+resolver = "3"
+members = ["crates/leona-core","crates/leona-db", "crates/leona-user"]
+
+[package]
+name = "leona-api"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+
+[workspace.dependencies]
+sqlx = { version="0.9.0", features=["sqlx-sqlite","sqlite","runtime-tokio","macros"] }
+tokio = { version="1.53.1", features=["macros","rt"] }
+chrono = { version = "0.4.45" }
+fake = { version = "5.1.0", features = ["chrono"] }
