@@ -1,47 +1,13 @@
+pub mod gender;
+pub use gender::Gender;
+pub mod profile;
+pub use profile::{CreateUserProfile, UpdateUserProfile, UserProfileData};
+
 use std::sync::Arc;
 
-use chrono::{DateTime, NaiveDate, Utc};
 use leona_core::Error;
 use leona_db::Db;
-use sqlx::{AssertSqlSafe, prelude::FromRow};
-
-#[derive(Debug, Clone, sqlx::Type, PartialEq, Eq)]
-#[sqlx(rename_all = "lowercase")]
-pub enum Gender {
-    Male,
-    Female,
-    NotSpecified,
-}
-
-#[derive(Debug, Clone, FromRow)]
-pub struct CreateUserProfile {
-    pub name: String,
-    pub gender: Gender,
-    pub date_of_birth: NaiveDate,
-    pub avatar: Option<String>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, FromRow)]
-pub struct UpdateUserProfile {
-    pub name: String,
-    pub gender: Gender,
-    pub date_of_birth: NaiveDate,
-    pub avatar: Option<String>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, FromRow)]
-pub struct UserProfile {
-    pub id: u64,
-    pub name: String,
-    pub gender: Gender,
-    pub date_of_birth: NaiveDate,
-    pub avatar: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: Option<DateTime<Utc>>,
-}
-
+use sqlx::AssertSqlSafe;
 #[derive(Debug, Clone)]
 pub struct User {
     pub db_client: Arc<Db>,
@@ -111,13 +77,13 @@ impl User {
         }
     }
 
-    pub async fn get(&self) -> Result<UserProfile, Error> {
+    pub async fn get(&self) -> Result<UserProfileData, Error> {
         {
             let mut connection = self.db_client.get_connection().await?;
 
             let query_stmt = format!("SELECT * FROM {} WHERE id = 1", Self::table());
 
-            match sqlx::query_as::<_, UserProfile>(AssertSqlSafe(query_stmt))
+            match sqlx::query_as::<_, UserProfileData>(AssertSqlSafe(query_stmt))
                 .fetch_one(&mut *connection)
                 .await
             {
@@ -150,6 +116,7 @@ impl User {
             }
         }
     }
+
     pub async fn update(&self, data: UpdateUserProfile) -> Result<(), Error> {
         {
             let mut connection = self.db_client.get_connection().await?;
@@ -177,6 +144,8 @@ impl User {
 
 #[cfg(test)]
 pub mod test_user {
+    use chrono::{NaiveDate, Utc};
+
     use super::*;
 
     #[tokio::test]
@@ -208,7 +177,7 @@ pub mod test_user {
 
         let user_profile = user.get().await.expect("unable to get user profile data");
         assert_eq!(user_profile.id, 1);
-        assert!(user_profile.updated_at.is_none());
+        assert!(user_profile.updated_at.is_some());
 
         let _ = user
             .update(UpdateUserProfile {
