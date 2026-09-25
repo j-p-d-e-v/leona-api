@@ -1,0 +1,12 @@
+[package]
+name = "leona-health"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+sqlx.workspace = true
+tokio.workspace = true
+leona-db = { path ="../leona-db"}
+chrono.workspace = true
+fake.workspace = true
+leona-core = { path = "../leona-core"}

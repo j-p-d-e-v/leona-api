@@ -665,6 +665,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "leona-health"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "fake",
+ "leona-core",
+ "leona-db",
+ "sqlx",
+ "tokio",
+]
+
+[[package]]
 name = "leona-user"
 version = "0.1.0"
 dependencies = [

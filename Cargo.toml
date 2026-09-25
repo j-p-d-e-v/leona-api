@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/leona-core","crates/leona-db", "crates/leona-user"]
+members = ["crates/leona-health","crates/leona-core","crates/leona-db", "crates/leona-user"]
 
 [package]
 name = "leona-api"
