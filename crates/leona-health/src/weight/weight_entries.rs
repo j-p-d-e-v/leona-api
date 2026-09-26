@@ -15,10 +15,11 @@ pub struct WeightEntries {
 #[derive(Debug, Clone, FromRow)]
 pub struct WeightEntryData {
     id: Option<i64>,
+    user_id: i64,
     weight: f32,
     unit: WeightUnit,
     notes: Option<String>,
-    created_at: DateTime<Utc>,
+    created_at: Option<DateTime<Utc>>,
     updated_at: Option<DateTime<Utc>>,
 }
 
@@ -49,6 +50,7 @@ impl WeightEntries {
                 r#"
                    CREATE TABLE IF NOT EXISTS {} (
                        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                       user_id       INTEGER NOT NULL,
                        weight        FLOAT NOT NULL,
                        unit          TEXT NOT NULL,
                        notes         TEXT NULL,
@@ -69,13 +71,17 @@ impl WeightEntries {
         }
     }
 
-    pub async fn list(&self) -> Result<Vec<WeightEntryData>, Error> {
+    pub async fn list(&self, user_id: i64) -> Result<Vec<WeightEntryData>, Error> {
         {
             let mut connection = self.db_client.get_connection().await?;
 
-            let query_stmt = format!("SELECT * FROM {}", Self::table());
+            let query_stmt = format!(
+                "SELECT * FROM {} WHERE user_id = $1 ORDER BY created_at DESC",
+                Self::table()
+            );
 
             match sqlx::query_as::<_, WeightEntryData>(AssertSqlSafe(query_stmt))
+                .bind(user_id)
                 .fetch_all(&mut *connection)
                 .await
             {
@@ -102,21 +108,23 @@ impl WeightEntries {
         }
     }
 
-    pub async fn create(&self, data: WeightEntryData) -> Result<(), Error> {
+    pub async fn create(&self, data: WeightEntryData) -> Result<i64, Error> {
         {
             let mut connection = self.db_client.get_connection().await?;
 
             let query_stmt = format!(
                 "INSERT INTO {}(
+                    user_id,
                     weight,
                     unit,
-                    notes
+                    notes,
                     created_at
-                ) VALUES(?,?,?,?)",
+                ) VALUES(?,?,?,?,?)",
                 Self::table()
             );
 
             match sqlx::query(AssertSqlSafe(query_stmt))
+                .bind(data.user_id)
                 .bind(data.weight)
                 .bind(data.unit)
                 .bind(data.notes)
@@ -124,13 +132,13 @@ impl WeightEntries {
                 .execute(&mut *connection)
                 .await
             {
-                Ok(_) => Ok(()),
+                Ok(result) => Ok(result.last_insert_rowid()),
                 Err(error) => Err(Error::DbQueryErr(error.to_string())),
             }
         }
     }
 
-    pub async fn update(&self, data: WeightEntryData) -> Result<(), Error> {
+    pub async fn update(&self, data: WeightEntryData) -> Result<bool, Error> {
         {
             let mut connection = self.db_client.get_connection().await?;
 
@@ -148,7 +156,12 @@ impl WeightEntries {
                 .execute(&mut *connection)
                 .await
             {
-                Ok(_) => Ok(()),
+                Ok(result) => {
+                    if result.rows_affected() == 0 {
+                        return Err(Error::DbQueryErr("nothing is updated".to_string()));
+                    }
+                    Ok(true)
+                }
                 Err(error) => Err(Error::DbQueryErr(error.to_string())),
             }
         }
@@ -169,5 +182,73 @@ impl WeightEntries {
                 Err(error) => Err(Error::DbQueryErr(error.to_string())),
             }
         }
+    }
+}
+
+#[cfg(test)]
+pub mod case {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_weight_entry() {
+        let db = Db::new("/home/jp-laptop/Codes/leona-api/storage/test.db")
+            .await
+            .expect("expecting a db instance");
+        let db_client = Arc::new(db);
+        let we = WeightEntries::new(db_client)
+            .await
+            .expect("expecting a weight entries instance");
+        let create_we = WeightEntryData {
+            user_id: 1,
+            weight: 172.0,
+            unit: WeightUnit::Lb,
+            notes: Some("Lorem ipsum".to_string()),
+            created_at: Some(Utc::now()),
+            updated_at: None,
+            id: None,
+        };
+        let created_weight_entry_id = we
+            .create(create_we)
+            .await
+            .expect("expecting the created data");
+
+        let created_weight_entry_data = we
+            .get(created_weight_entry_id)
+            .await
+            .expect("expecting a weight entry data");
+        println!("Created");
+
+        let weight_entries_data = we.list(1).await.expect("expecting weight entries data");
+        assert!(!weight_entries_data.is_empty());
+        println!("Listed");
+
+        let update_we = WeightEntryData {
+            user_id: 1,
+            weight: 173.0,
+            unit: WeightUnit::Lb,
+            notes: Some("Updated Lorem ipsum".to_string()),
+            created_at: None,
+            updated_at: Some(Utc::now()),
+            id: created_weight_entry_data.id.clone(),
+        };
+
+        let _updated_we_status = we
+            .update(update_we)
+            .await
+            .expect("expecting updated weight entry data");
+
+        let updated_weight_entry_data = we
+            .get(created_weight_entry_id.clone())
+            .await
+            .expect("expecting a weight entry data");
+
+        assert_eq!(updated_weight_entry_data.weight, 173.0);
+        println!("Updated");
+        let deleted_we_result = we.delete(created_weight_entry_id.clone()).await;
+        assert!(deleted_we_result.is_ok());
+
+        let deleted_weight_entry_data = we.get(created_weight_entry_id.clone()).await;
+        assert!(deleted_weight_entry_data.is_err());
+        println!("Deleted")
     }
 }
